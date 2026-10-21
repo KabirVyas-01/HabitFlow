@@ -1,0 +1,6 @@
+{
+  "name": "HabitFlow - Calm Habit Tracking & Momentum",
+  "description": "Mindful habit tracking with calm consistency, daily rituals, live card preview, and progress analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
