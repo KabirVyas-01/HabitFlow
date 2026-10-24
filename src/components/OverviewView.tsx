@@ -22,6 +22,7 @@ export const OverviewView: React.FC = () => {
     triggerHabitNotification,
     userName,
     completions,
+    overallStreaks,
   } = useHabits();
 
   const [activeReminderHabitId, setActiveReminderHabitId] = useState<string | null>(null);
@@ -282,7 +283,7 @@ export const OverviewView: React.FC = () => {
                 Current Streak
               </span>
               <span className="font-headline-sm text-headline-sm text-primary font-bold">
-                18 Days
+                {overallStreaks.current} {overallStreaks.current === 1 ? 'Day' : 'Days'}
               </span>
             </div>
           </div>
@@ -296,7 +297,7 @@ export const OverviewView: React.FC = () => {
                 Best Streak
               </span>
               <span className="font-headline-sm text-headline-sm text-primary font-bold">
-                42 Days
+                {overallStreaks.best} {overallStreaks.best === 1 ? 'Day' : 'Days'}
               </span>
             </div>
           </div>

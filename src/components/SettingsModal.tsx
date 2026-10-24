@@ -1,11 +1,38 @@
-import React, { useState } from 'react';
-import { useHabits, DEFAULT_AUTHORIZED_EMAIL } from '../context/HabitContext';
+import React, { useState, useRef } from 'react';
+import { useHabits, DEFAULT_USER_EMAIL } from '../context/HabitContext';
 import { to12HourTime, to24HourTime } from '../utils/habitUtils';
+
+const CURATED_AVATARS = [
+  {
+    id: 'zen-stone',
+    label: 'River Stones',
+    url: 'https://images.unsplash.com/photo-1518241353330-0f7941c2d9b5?auto=format&fit=crop&w=120&h=120&q=80',
+  },
+  {
+    id: 'forest-pine',
+    label: 'Forest Mist',
+    url: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=120&h=120&q=80',
+  },
+  {
+    id: 'bamboo-green',
+    label: 'Calm Bamboo',
+    url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=120&h=120&q=80',
+  },
+  {
+    id: 'sunrise-warmth',
+    label: 'Dawn Horizon',
+    url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=120&h=120&q=80',
+  },
+];
 
 export const SettingsView: React.FC = () => {
   const {
     userName,
     userEmail,
+    userAvatar,
+    setUserName,
+    setUserEmail,
+    setUserAvatar,
     isAuthenticated,
     signInWithAccount,
     signOutAccount,
@@ -14,15 +41,19 @@ export const SettingsView: React.FC = () => {
     updateHabitReminder,
     triggerHabitNotification,
     resetDemoData,
+    overallStreaks,
   } = useHabits();
 
   const [nameInput, setNameInput] = useState(userName);
-  const [emailInput, setEmailInput] = useState(userEmail || DEFAULT_AUTHORIZED_EMAIL);
+  const [emailInput, setEmailInput] = useState(userEmail || '');
+  const [customUrlInput, setCustomUrlInput] = useState('');
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [dailyQuotes, setDailyQuotes] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [avatarError, setAvatarError] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -31,22 +62,59 @@ export const SettingsView: React.FC = () => {
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    const validEmail = emailInput.trim() || DEFAULT_AUTHORIZED_EMAIL;
     const validName = nameInput.trim() || 'Elena';
-    signInWithAccount(validEmail, validName);
-    showToast('Account & profile updated');
+    const validEmail = emailInput.trim();
+    setUserName(validName);
+    setUserEmail(validEmail);
+    showToast('Profile updated');
   };
 
-  const handleQuickAuthorizedSignIn = () => {
-    setEmailInput(DEFAULT_AUTHORIZED_EMAIL);
-    signInWithAccount(DEFAULT_AUTHORIZED_EMAIL, nameInput.trim() || 'Elena');
-    showToast(`Signed in as ${DEFAULT_AUTHORIZED_EMAIL}`);
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select a valid image file');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setUserAvatar(reader.result);
+        showToast('Profile picture updated');
+        setShowAvatarPicker(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSelectCuratedAvatar = (url: string) => {
+    setUserAvatar(url);
+    showToast('Profile avatar chosen');
+    setShowAvatarPicker(false);
+  };
+
+  const handleApplyCustomUrl = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customUrlInput.trim()) return;
+    setUserAvatar(customUrlInput.trim());
+    setCustomUrlInput('');
+    showToast('Custom avatar URL applied');
+    setShowAvatarPicker(false);
+  };
+
+  const handleRemoveAvatar = () => {
+    setUserAvatar(null);
+    showToast('Profile picture reset to initial monogram');
+    setShowAvatarPicker(false);
   };
 
   const handleExportData = () => {
     const data = {
       user: userName,
       email: userEmail,
+      avatar: userAvatar ? 'custom' : 'monogram',
       habits,
       completions,
       exportedAt: new Date().toISOString(),
@@ -60,6 +128,8 @@ export const SettingsView: React.FC = () => {
     URL.revokeObjectURL(url);
     showToast('Data exported successfully');
   };
+
+  const initialLetter = userName.trim() ? userName.trim().charAt(0).toUpperCase() : 'U';
 
   return (
     <div className="flex flex-col w-full max-w-xl mx-auto px-margin pt-space-sm pb-28 space-y-space-md">
@@ -82,60 +152,155 @@ export const SettingsView: React.FC = () => {
       </div>
 
       {/* Account & Profile Card */}
-      <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-xs space-y-space-sm">
+      <div className="bg-surface-container-lowest rounded-2xl p-space-md shadow-xs space-y-space-md">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            {!avatarError ? (
-              <img
-                alt={`${userName} Profile`}
-                referrerPolicy="no-referrer"
-                className="w-12 h-12 rounded-full object-cover ring-2 ring-primary-container/20 shrink-0"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuDpmip-hDi70t8xbhDJIT45taYRrNZzQ_JuGvQ9rT0oNeECLG6Ad9Z8C0p2thsHTkA6tGmVkJSJDqPZ-PlsqtIjwOkUdty73haetHYC3IzrnMlN-l9kVZI9wKffg_RSbGIDQERnLUnyDP6AgzJNp20jjfBu8SsqguwllhltY6K-k2GPZs_jLymw2SbTtCB7PuqKk6QxuSIFcdU7VES03baQ4YH4hA-S-vRCbWnYt8o6npj-mCF7YtmrCg"
-                onError={() => setAvatarError(true)}
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-bold text-base shrink-0">
-                {userName.charAt(0)}
-              </div>
-            )}
+          <div className="flex items-center gap-3.5 min-w-0">
+            {/* Clickable Profile Avatar */}
+            <div className="relative group shrink-0">
+              {userAvatar ? (
+                <img
+                  alt={`${userName} Profile`}
+                  referrerPolicy="no-referrer"
+                  className="w-14 h-14 rounded-full object-cover ring-2 ring-primary-container/20 shadow-xs"
+                  src={userAvatar}
+                />
+              ) : (
+                <div className="w-14 h-14 rounded-full bg-secondary-container text-primary flex items-center justify-center font-bold text-xl ring-2 ring-primary-container/20 shadow-xs">
+                  {initialLetter}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowAvatarPicker(!showAvatarPicker)}
+                className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary-container text-on-primary flex items-center justify-center shadow-xs hover:scale-105 transition-transform cursor-pointer"
+                title="Change profile picture"
+                aria-label="Change profile picture"
+              >
+                <span className="material-symbols-outlined text-[13px]">photo_camera</span>
+              </button>
+            </div>
+
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="font-headline-sm text-headline-sm text-primary truncate">{userName}</h2>
                 {isAuthenticated && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary-container/50 text-on-secondary-fixed text-[10px] font-semibold">
                     <span className="material-symbols-outlined text-[12px]">verified</span>
-                    Connected
+                    Active
                   </span>
                 )}
               </div>
-              <p className="font-body-sm text-body-sm text-on-surface-variant truncate">
-                {userEmail}
+              <p className="font-body-sm text-xs text-on-surface-variant truncate">
+                {userEmail || 'No email specified'}
+              </p>
+              <p className="font-label-sm text-[11px] text-secondary font-medium mt-0.5">
+                {overallStreaks.current} {overallStreaks.current === 1 ? 'day active streak' : 'days active streak'}
               </p>
             </div>
           </div>
 
-          {isAuthenticated ? (
-            <button
-              type="button"
-              onClick={() => {
-                signOutAccount();
-                showToast('Signed out of session');
-              }}
-              className="px-3 py-1.5 rounded-lg bg-surface-container text-on-surface-variant hover:bg-surface-container-high font-label-sm text-label-sm cursor-pointer shrink-0"
-            >
-              Sign Out
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleQuickAuthorizedSignIn}
-              className="px-3 py-1.5 rounded-lg bg-primary-container text-on-primary font-label-sm text-label-sm cursor-pointer shrink-0"
-            >
-              Sign In
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setShowAvatarPicker(!showAvatarPicker)}
+            className="px-3 py-1.5 rounded-lg border border-outline-variant/40 hover:bg-surface-container font-label-sm text-label-sm text-primary transition-colors cursor-pointer shrink-0"
+          >
+            {showAvatarPicker ? 'Close' : 'Change Photo'}
+          </button>
         </div>
 
+        {/* Profile Picture Picker Panel */}
+        {showAvatarPicker && (
+          <div className="p-3 bg-surface-container-low rounded-xl space-y-3 border border-outline-variant/20 transition-all">
+            <div className="flex items-center justify-between">
+              <span className="font-label-md text-label-md font-semibold text-primary flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-secondary">image</span>
+                Choose Your Profile Picture
+              </span>
+              {userAvatar && (
+                <button
+                  type="button"
+                  onClick={handleRemoveAvatar}
+                  className="text-[11px] text-error hover:underline font-semibold cursor-pointer"
+                >
+                  Remove Photo
+                </button>
+              )}
+            </div>
+
+            {/* Option A: Upload File */}
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="hidden"
+                id="avatar-file-upload"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex-1 py-2 px-3 rounded-lg bg-surface-container-lowest text-primary font-label-sm text-xs font-semibold hover:bg-surface-container transition-colors flex items-center justify-center gap-1.5 border border-outline-variant/30 cursor-pointer shadow-2xs"
+              >
+                <span className="material-symbols-outlined text-[16px]">upload</span>
+                Upload From Device
+              </button>
+              <button
+                type="button"
+                onClick={handleRemoveAvatar}
+                className="py-2 px-3 rounded-lg bg-surface-container-lowest text-on-surface-variant font-label-sm text-xs hover:bg-surface-container transition-colors border border-outline-variant/30 cursor-pointer shadow-2xs"
+              >
+                Use Initial ({initialLetter})
+              </button>
+            </div>
+
+            {/* Option B: Curated Serene Themes */}
+            <div>
+              <span className="block text-[11px] text-on-surface-variant font-medium mb-1.5">
+                Or pick a calm atmosphere:
+              </span>
+              <div className="grid grid-cols-4 gap-2">
+                {CURATED_AVATARS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSelectCuratedAvatar(item.url)}
+                    className="flex flex-col items-center gap-1 group cursor-pointer"
+                  >
+                    <img
+                      src={item.url}
+                      alt={item.label}
+                      referrerPolicy="no-referrer"
+                      className="w-12 h-12 rounded-full object-cover ring-1 ring-surface-container-high group-hover:ring-2 group-hover:ring-primary transition-all shadow-2xs"
+                    />
+                    <span className="text-[10px] text-on-surface-variant truncate max-w-full">
+                      {item.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Option C: Image URL */}
+            <form onSubmit={handleApplyCustomUrl} className="flex gap-1.5 pt-1">
+              <input
+                type="url"
+                value={customUrlInput}
+                onChange={(e) => setCustomUrlInput(e.target.value)}
+                placeholder="Paste image URL (https://...)"
+                className="flex-1 bg-surface-container-lowest rounded-lg px-2.5 py-1.5 text-xs text-primary focus:outline-none border border-outline-variant/30"
+              />
+              <button
+                type="submit"
+                className="px-3 py-1.5 rounded-lg bg-primary-container text-on-primary text-xs font-semibold hover:opacity-90 cursor-pointer"
+              >
+                Apply
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* Profile Edit Form */}
         <form onSubmit={handleSaveProfile} className="pt-2 space-y-3 border-t border-surface-container-low">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
@@ -150,6 +315,7 @@ export const SettingsView: React.FC = () => {
                 type="text"
                 value={nameInput}
                 onChange={(e) => setNameInput(e.target.value)}
+                placeholder="Your Name"
                 className="w-full bg-surface-container-low rounded-lg px-3 py-2 font-body-md text-primary text-sm focus:outline-none focus:bg-surface-container"
               />
             </div>
@@ -159,34 +325,25 @@ export const SettingsView: React.FC = () => {
                 className="block font-label-sm text-label-sm text-on-surface-variant mb-1"
                 htmlFor="emailInput"
               >
-                Authorized Google Account
+                Email Address
               </label>
               <input
                 id="emailInput"
                 type="email"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
-                placeholder={DEFAULT_AUTHORIZED_EMAIL}
+                placeholder="you@example.com"
                 className="w-full bg-surface-container-low rounded-lg px-3 py-2 font-body-md text-primary text-sm focus:outline-none focus:bg-surface-container"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-2 pt-1">
-            <button
-              type="button"
-              onClick={handleQuickAuthorizedSignIn}
-              className="text-xs text-secondary hover:underline font-medium cursor-pointer flex items-center gap-1"
-            >
-              <span className="material-symbols-outlined text-[14px]">account_circle</span>
-              Use authorized account ({DEFAULT_AUTHORIZED_EMAIL})
-            </button>
-
+          <div className="flex items-center justify-end gap-2 pt-1">
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg bg-primary-container text-on-primary font-label-md text-label-md cursor-pointer hover:opacity-90 shrink-0"
+              className="px-5 py-2 rounded-lg bg-primary-container text-on-primary font-label-md text-label-md cursor-pointer hover:opacity-90"
             >
-              Save Account
+              Save Profile
             </button>
           </div>
         </form>

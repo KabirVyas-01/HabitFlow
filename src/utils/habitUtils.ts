@@ -242,7 +242,7 @@ export const INITIAL_HABITS: Habit[] = [
   },
 ];
 
-// Pre-populate realistic October 2024 completion history matching the stitch heatmap and 142 total done
+// Seed completion history for October 2024
 export function generateInitialCompletions(): CompletionMap {
   const completions: CompletionMap = {};
   const habitIds = INITIAL_HABITS.map((h) => h.id);
@@ -306,6 +306,22 @@ export function generateInitialCompletions(): CompletionMap {
     }
   }
 
+  // Also seed realistic past 60 days (August & September) so 90D and Year views have rich authentic data
+  for (let m = 8; m <= 9; m++) {
+    const daysInMonth = m === 8 ? 31 : 30;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `2024-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      // High adherence with intermittent rest days on Sundays
+      const dateObj = parseDateKey(dateStr);
+      const isSunday = dateObj.getDay() === 0;
+      const count = isSunday ? 3 : (d % 7 === 0 ? 5 : 7);
+
+      for (let i = 0; i < habitIds.length; i++) {
+        completions[habitIds[i]][dateStr] = i < count;
+      }
+    }
+  }
+
   return completions;
 }
 
@@ -326,67 +342,245 @@ export const INITIAL_REFLECTIONS: DailyReflection[] = [
   },
 ];
 
+/**
+ * Authentic, dynamic streak calculation for an individual habit.
+ * Completely computes streak from actual recorded data with zero hardcoded numbers.
+ */
 export function calculateHabitStats(
   habit: Habit,
   completions: CompletionMap,
-  todayStr: string
+  todayStr: string,
+  timeframeDays = 30
 ) {
   const habitRecords = completions[habit.id] || {};
   let currentStreak = 0;
+  let bestStreak = 0;
+  let tempStreak = 0;
   let totalCompletions = 0;
 
-  const checkDate = parseDateKey(todayStr);
+  const targetDate = parseDateKey(todayStr);
+
+  // Helper to check if habit is scheduled on a day
+  const isScheduledOn = (d: Date) => {
+    if (habit.cadence === 'Daily') return true;
+    const dayOfWeek = getDayOfWeekIndex(d);
+    return habit.repeatDays.includes(dayOfWeek);
+  };
+
+  // 1. Calculate Current Streak:
+  // Check today first
   const todayDone = Boolean(habitRecords[todayStr]);
+  let startDateOffset = 0;
+
   if (todayDone) {
     currentStreak++;
+    startDateOffset = 1;
+  } else {
+    // If today is not completed yet, check if habit was done yesterday
+    // (don't break streak mid-day while the user still has time to complete it)
+    startDateOffset = 1;
   }
 
-  for (let i = 1; i < 90; i++) {
-    const prevDate = new Date(checkDate);
-    prevDate.setDate(prevDate.getDate() - i);
-    const key = formatDateKey(prevDate);
-    if (habitRecords[key]) {
-      currentStreak++;
+  // Walk backwards up to 365 days
+  for (let i = startDateOffset; i < 365; i++) {
+    const d = new Date(targetDate);
+    d.setDate(d.getDate() - i);
+    const key = formatDateKey(d);
+
+    if (isScheduledOn(d)) {
+      if (habitRecords[key]) {
+        currentStreak++;
+      } else {
+        // Streak is broken
+        break;
+      }
+    }
+  }
+
+  // 2. Calculate Best Streak across full recorded history
+  // Scan backwards across the past 180 days
+  for (let i = 180; i >= 0; i--) {
+    const d = new Date(targetDate);
+    d.setDate(d.getDate() - i);
+    const key = formatDateKey(d);
+
+    if (isScheduledOn(d)) {
+      if (habitRecords[key]) {
+        tempStreak++;
+        if (tempStreak > bestStreak) {
+          bestStreak = tempStreak;
+        }
+      } else {
+        tempStreak = 0;
+      }
+    }
+  }
+
+  bestStreak = Math.max(bestStreak, currentStreak);
+
+  // 3. Calculate Consistency Rate for active timeframe
+  let scheduledInWindow = 0;
+  let completedInWindow = 0;
+
+  for (let i = 0; i < timeframeDays; i++) {
+    const d = new Date(targetDate);
+    d.setDate(d.getDate() - i);
+    const key = formatDateKey(d);
+
+    if (isScheduledOn(d)) {
+      scheduledInWindow++;
+      if (habitRecords[key]) {
+        completedInWindow++;
+        totalCompletions++;
+      }
+    }
+  }
+
+  const consistencyRate =
+    scheduledInWindow > 0
+      ? Math.round((completedInWindow / scheduledInWindow) * 100)
+      : 0;
+
+  return {
+    streak: currentStreak,
+    bestStreak,
+    consistencyRate,
+    totalCompletions: completedInWindow,
+  };
+}
+
+/**
+ * Calculates genuine overall current streak and best streak across all habits.
+ * A day is considered a streak day if at least 60% of scheduled rituals were accomplished.
+ */
+export function calculateOverallStreaks(
+  habits: Habit[],
+  completions: CompletionMap,
+  todayStr: string
+): { current: number; best: number } {
+  if (habits.length === 0) return { current: 0, best: 0 };
+
+  const targetDate = parseDateKey(todayStr);
+
+  const getDaySuccess = (d: Date) => {
+    const dayOfWeek = getDayOfWeekIndex(d);
+    const key = formatDateKey(d);
+
+    const scheduled = habits.filter(
+      (h) => h.cadence === 'Daily' || h.repeatDays.includes(dayOfWeek)
+    );
+    if (scheduled.length === 0) return true; // rest day
+
+    const done = scheduled.filter((h) => completions[h.id]?.[key]).length;
+    return done / scheduled.length >= 0.6; // At least 60% threshold
+  };
+
+  let current = 0;
+  // Check if today qualifies
+  const todayQualifies = getDaySuccess(targetDate);
+  if (todayQualifies) {
+    current++;
+  }
+
+  // Walk backwards
+  for (let i = 1; i < 365; i++) {
+    const d = new Date(targetDate);
+    d.setDate(d.getDate() - i);
+    if (getDaySuccess(d)) {
+      current++;
     } else {
       break;
     }
   }
 
-  let activeIn30 = 0;
-  for (let i = 0; i < 30; i++) {
-    const d = new Date(checkDate);
+  // Best streak over past 180 days
+  let best = 0;
+  let temp = 0;
+  for (let i = 180; i >= 0; i--) {
+    const d = new Date(targetDate);
     d.setDate(d.getDate() - i);
-    const key = formatDateKey(d);
-    if (habitRecords[key]) {
-      activeIn30++;
-      totalCompletions++;
+    if (getDaySuccess(d)) {
+      temp++;
+      if (temp > best) best = temp;
+    } else {
+      temp = 0;
     }
   }
 
-  const consistencyRate = Math.round((activeIn30 / 30) * 100);
+  return {
+    current,
+    best: Math.max(best, current),
+  };
+}
 
-  if (habit.id === 'habit-1') {
-    return { streak: 18, consistencyRate: 94, totalCompletions: 28 };
+/**
+ * Calculates comprehensive metrics and data series for 7D, 30D, 90D, and Year.
+ */
+export function calculateTimeframeData(
+  habits: Habit[],
+  completions: CompletionMap,
+  timeframe: '7D' | '30D' | '90D' | 'Year',
+  todayStr: string
+) {
+  const targetDate = parseDateKey(todayStr);
+
+  let numDays = 30;
+  if (timeframe === '7D') numDays = 7;
+  else if (timeframe === '30D') numDays = 30;
+  else if (timeframe === '90D') numDays = 90;
+  else if (timeframe === 'Year') numDays = 365;
+
+  let totalScheduled = 0;
+  let totalDone = 0;
+  let activeDays = 0;
+
+  // Day-by-day record
+  const dailyPoints: {
+    dateStr: string;
+    label: string;
+    dayNum: number;
+    monthLabel: string;
+    done: number;
+    scheduled: number;
+    percentage: number;
+  }[] = [];
+
+  for (let i = numDays - 1; i >= 0; i--) {
+    const d = new Date(targetDate);
+    d.setDate(d.getDate() - i);
+    const key = formatDateKey(d);
+    const dayOfWeek = getDayOfWeekIndex(d);
+
+    const scheduledHabits = habits.filter(
+      (h) => h.cadence === 'Daily' || h.repeatDays.includes(dayOfWeek)
+    );
+    const countScheduled = Math.max(scheduledHabits.length, 1);
+    const countDone = scheduledHabits.filter((h) => completions[h.id]?.[key]).length;
+
+    totalScheduled += countScheduled;
+    totalDone += countDone;
+    if (countDone > 0) activeDays++;
+
+    dailyPoints.push({
+      dateStr: key,
+      label: d.toLocaleDateString('en-US', { weekday: 'narrow' }),
+      dayNum: d.getDate(),
+      monthLabel: d.toLocaleDateString('en-US', { month: 'short' }),
+      done: countDone,
+      scheduled: countScheduled,
+      percentage: Math.round((countDone / countScheduled) * 100),
+    });
   }
-  if (habit.id === 'habit-2') {
-    return { streak: 24, consistencyRate: 90, totalCompletions: 27 };
-  }
-  if (habit.id === 'habit-3') {
-    return { streak: 12, consistencyRate: 85, totalCompletions: 25 };
-  }
-  if (habit.id === 'habit-4') {
-    return { streak: 8, consistencyRate: 80, totalCompletions: 24 };
-  }
-  if (habit.id === 'habit-5') {
-    return { streak: 5, consistencyRate: 75, totalCompletions: 22 };
-  }
-  if (habit.id === 'habit-6') {
-    return { streak: 6, consistencyRate: 72, totalCompletions: 21 };
-  }
+
+  const rate =
+    totalScheduled > 0 ? Math.round((totalDone / totalScheduled) * 100) : 0;
 
   return {
-    streak: Math.max(currentStreak, 1),
-    consistencyRate: Math.max(consistencyRate, 50),
-    totalCompletions,
+    timeframe,
+    numDays,
+    rate,
+    totalDone,
+    activeDays,
+    dailyPoints,
   };
 }

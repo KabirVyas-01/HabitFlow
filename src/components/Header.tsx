@@ -28,8 +28,9 @@ export const HabitFlowLogo: React.FC<{ className?: string }> = ({ className = 'w
 );
 
 export const Header: React.FC = () => {
-  const { currentView, setCurrentView, editingHabit, setEditingHabit, userName, userEmail } = useHabits();
-  const [avatarError, setAvatarError] = useState(false);
+  const { currentView, setCurrentView, editingHabit, setEditingHabit, userName, userEmail, userAvatar } =
+    useHabits();
+  const [avatarImgError, setAvatarImgError] = useState(false);
 
   const getBreadcrumb = () => {
     switch (currentView) {
@@ -54,6 +55,8 @@ export const Header: React.FC = () => {
     setEditingHabit(null);
     setCurrentView('overview');
   };
+
+  const initialLetter = userName.trim() ? userName.trim().charAt(0).toUpperCase() : 'U';
 
   return (
     <header className="fixed top-0 inset-x-0 z-50 bg-surface/85 backdrop-blur-xl pt-safe shadow-[0_1px_8px_rgba(0,0,0,0.03)]">
@@ -98,26 +101,26 @@ export const Header: React.FC = () => {
           </div>
         </div>
 
-        {/* Profile Avatar */}
+        {/* Profile Avatar (User-Selected or Monogram) */}
         <div className="flex items-center gap-space-sm">
           <button
-            aria-label="Profile"
-            title={`${userName} (${userEmail})`}
+            aria-label="Profile and Settings"
+            title={userEmail ? `${userName} (${userEmail})` : userName}
             onClick={() => setCurrentView('settings')}
             className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-surface-container transition-colors cursor-pointer"
             type="button"
           >
-            {!avatarError ? (
+            {userAvatar && !avatarImgError ? (
               <img
                 alt={`Profile of ${userName}`}
                 referrerPolicy="no-referrer"
-                className="w-8 h-8 rounded-full object-cover ring-1 ring-surface-container-high"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuDpmip-hDi70t8xbhDJIT45taYRrNZzQ_JuGvQ9rT0oNeECLG6Ad9Z8C0p2thsHTkA6tGmVkJSJDqPZ-PlsqtIjwOkUdty73haetHYC3IzrnMlN-l9kVZI9wKffg_RSbGIDQERnLUnyDP6AgzJNp20jjfBu8SsqguwllhltY6K-k2GPZs_jLymw2SbTtCB7PuqKk6QxuSIFcdU7VES03baQ4YH4hA-S-vRCbWnYt8o6npj-mCF7YtmrCg"
-                onError={() => setAvatarError(true)}
+                className="w-8 h-8 rounded-full object-cover ring-1 ring-primary-container/30 shadow-2xs"
+                src={userAvatar}
+                onError={() => setAvatarImgError(true)}
               />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-bold text-xs">
-                {userName.charAt(0)}
+              <div className="w-8 h-8 rounded-full bg-secondary-container text-primary flex items-center justify-center font-bold text-xs ring-1 ring-primary-container/20 shadow-2xs">
+                {initialLetter}
               </div>
             )}
           </button>

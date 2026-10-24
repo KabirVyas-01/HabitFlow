@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Habit,
   CompletionMap,
@@ -15,6 +15,7 @@ import {
   parseDateKey,
   to12HourTime,
   to24HourTime,
+  calculateOverallStreaks,
 } from '../utils/habitUtils';
 
 interface HabitContextType {
@@ -26,10 +27,13 @@ interface HabitContextType {
   editingHabit: Habit | null;
   userName: string;
   userEmail: string;
+  userAvatar: string | null;
   isAuthenticated: boolean;
   activeNotifications: ActiveReminderNotification[];
+  overallStreaks: { current: number; best: number };
   setUserName: (name: string) => void;
   setUserEmail: (email: string) => void;
+  setUserAvatar: (avatar: string | null) => void;
   signInWithAccount: (email: string, name?: string) => void;
   signOutAccount: () => void;
   setSelectedDate: (date: string) => void;
@@ -58,8 +62,9 @@ const COMPLETIONS_STORAGE_KEY = 'habitflow_completions_v2';
 const REFLECTIONS_STORAGE_KEY = 'habitflow_reflections_v2';
 const USER_STORAGE_KEY = 'habitflow_user_v2';
 const USER_EMAIL_STORAGE_KEY = 'habitflow_user_email_v2';
+const USER_AVATAR_STORAGE_KEY = 'habitflow_user_avatar_v2';
 
-export const DEFAULT_AUTHORIZED_EMAIL = 'kabirvyas199@gmail.com';
+export const DEFAULT_USER_EMAIL = 'elena@habitflow.app';
 
 function normalizeHabitMetadata(habit: Habit): Habit {
   const reminderTime12 = to12HourTime(habit.reminderTime || habit.scheduledTime || '09:00 PM');
@@ -121,11 +126,24 @@ export const HabitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [userEmail, setUserEmail] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(USER_EMAIL_STORAGE_KEY);
+      // Ensure we clear out any previously persisted personal email
+      if (saved && !saved.includes('kabirvyas199@gmail.com')) {
+        return saved;
+      }
+    } catch {
+      // ignore
+    }
+    return DEFAULT_USER_EMAIL;
+  });
+
+  const [userAvatar, setUserAvatar] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem(USER_AVATAR_STORAGE_KEY);
       if (saved) return saved;
     } catch {
       // ignore
     }
-    return DEFAULT_AUTHORIZED_EMAIL;
+    return null;
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
@@ -133,6 +151,11 @@ export const HabitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [currentView, setCurrentView] = useState<ViewTab>('overview');
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [activeNotifications, setActiveNotifications] = useState<ActiveReminderNotification[]>([]);
+
+  // Dynamically compute overall current streak and best streak from actual completions data
+  const overallStreaks = useMemo(() => {
+    return calculateOverallStreaks(habits, completions, selectedDate);
+  }, [habits, completions, selectedDate]);
 
   // Sync to localStorage
   useEffect(() => {
@@ -177,6 +200,18 @@ export const HabitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [userEmail]);
 
+  useEffect(() => {
+    try {
+      if (userAvatar) {
+        localStorage.setItem(USER_AVATAR_STORAGE_KEY, userAvatar);
+      } else {
+        localStorage.removeItem(USER_AVATAR_STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, [userAvatar]);
+
   const triggerHabitNotification = useCallback((habitId: string) => {
     setHabits((currentHabits) => {
       const targetHabit = currentHabits.find((h) => h.id === habitId);
@@ -195,7 +230,6 @@ export const HabitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       setActiveNotifications((prev) => [notif, ...prev.filter((n) => n.habitId !== habitId)]);
 
-      // Also dispatch browser notification if permission is already granted
       if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
         try {
           new Notification(`HabitFlow Reminder · ${formattedTime}`, {
@@ -241,7 +275,7 @@ export const HabitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [habits, completions, selectedDate, triggerHabitNotification]);
 
   const signInWithAccount = (email: string, name?: string) => {
-    const cleanEmail = email.trim() || DEFAULT_AUTHORIZED_EMAIL;
+    const cleanEmail = email.trim() || DEFAULT_USER_EMAIL;
     setUserEmail(cleanEmail);
     if (name?.trim()) {
       setUserName(name.trim());
@@ -351,7 +385,8 @@ export const HabitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setCompletions(generateInitialCompletions());
     setReflections(INITIAL_REFLECTIONS);
     setUserName('Elena');
-    setUserEmail(DEFAULT_AUTHORIZED_EMAIL);
+    setUserEmail(DEFAULT_USER_EMAIL);
+    setUserAvatar(null);
     setIsAuthenticated(true);
     setSelectedDate(TODAY_KEY);
     setCurrentView('overview');
@@ -403,10 +438,13 @@ export const HabitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         editingHabit,
         userName,
         userEmail,
+        userAvatar,
         isAuthenticated,
         activeNotifications,
+        overallStreaks,
         setUserName,
         setUserEmail,
+        setUserAvatar,
         signInWithAccount,
         signOutAccount,
         setSelectedDate,
