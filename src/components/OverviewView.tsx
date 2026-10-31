@@ -4,6 +4,7 @@ import {
   formatHeaderDate,
   parseDateKey,
   formatDateKey,
+  TODAY_KEY,
   to12HourTime,
   to24HourTime,
 } from '../utils/habitUtils';
@@ -46,25 +47,31 @@ export const OverviewView: React.FC = () => {
   const circumference = 2 * Math.PI * radius; // ~188.5
   const strokeOffset = circumference - (percentage / 100) * circumference;
 
-  // Weekly consistency data for week containing Oct 24, 2024 (Mon Oct 21 to Sun Oct 27)
-  const weekDays = [
-    { label: 'M', dateStr: '2024-10-21' },
-    { label: 'T', dateStr: '2024-10-22' },
-    { label: 'W', dateStr: '2024-10-23' },
-    { label: 'T', dateStr: '2024-10-24' },
-    { label: 'F', dateStr: '2024-10-25' },
-    { label: 'S', dateStr: '2024-10-26' },
-    { label: 'S', dateStr: '2024-10-27' },
-  ];
+  const realToday = TODAY_KEY;
+
+  // Weekly consistency data for week containing selectedDate (Mon to Sun)
+  const selDayOfWeek = (selectedDateObj.getDay() + 6) % 7; // 0 = Mon, 6 = Sun
+  const monday = new Date(selectedDateObj);
+  monday.setDate(monday.getDate() - selDayOfWeek);
+
+  const weekLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const weekDays = weekLabels.map((label, idx) => {
+    const d = new Date(monday);
+    d.setDate(d.getDate() + idx);
+    return {
+      label,
+      dateStr: formatDateKey(d),
+    };
+  });
 
   // Calculate stats for weekly bar chart
   let weeklyTotalScheduled = 0;
   let weeklyTotalDone = 0;
 
   const weekBars = weekDays.map((wd) => {
-    const isToday = wd.dateStr === '2024-10-24';
+    const isToday = wd.dateStr === realToday;
     const isSelected = wd.dateStr === selectedDate;
-    const isPastOrToday = wd.dateStr <= '2024-10-24';
+    const isPastOrToday = wd.dateStr <= realToday;
 
     const wdObj = parseDateKey(wd.dateStr);
     const wdIndex = (wdObj.getDay() + 6) % 7;
@@ -91,20 +98,21 @@ export const OverviewView: React.FC = () => {
   });
 
   const weeklyAverage =
-    weeklyTotalScheduled > 0 ? Math.round((weeklyTotalDone / weeklyTotalScheduled) * 100) : 91;
+    weeklyTotalScheduled > 0 ? Math.round((weeklyTotalDone / weeklyTotalScheduled) * 100) : 0;
 
-  // 30-Day Activity Heatmap: 28 days preview (4 weeks from Oct 1 to Oct 28)
+  // 30-Day Activity Heatmap: 28 days preview ending on selectedDate
   const heatmapDays = Array.from({ length: 28 }, (_, i) => {
-    const dayNum = i + 1;
-    const dateStr = `2024-10-${String(dayNum).padStart(2, '0')}`;
-    const dayObj = parseDateKey(dateStr);
-    const dayIdx = (dayObj.getDay() + 6) % 7;
+    const d = new Date(selectedDateObj);
+    d.setDate(d.getDate() - (27 - i));
+    const dateStr = formatDateKey(d);
+    const dayNum = d.getDate();
+    const dayIdx = (d.getDay() + 6) % 7;
 
     const dayHabits = habits.filter((h) => h.cadence === 'Daily' || h.repeatDays.includes(dayIdx));
     const doneCount = dayHabits.filter((h) => completions[h.id]?.[dateStr]).length;
-    const isToday = dateStr === '2024-10-24';
+    const isToday = dateStr === realToday;
     const isSelected = dateStr === selectedDate;
-    const isUpcoming = dateStr > '2024-10-24';
+    const isUpcoming = dateStr > realToday;
 
     let bgClass = 'bg-surface-container-high text-outline';
     if (!isUpcoming) {
@@ -115,9 +123,9 @@ export const OverviewView: React.FC = () => {
       } else if (doneCount >= 4) {
         bgClass = 'bg-secondary-fixed-dim text-on-secondary-fixed-variant';
       } else if (doneCount > 0) {
-        bgClass = 'bg-surface-container-highest text-on-surface-variant';
+        bgClass = 'bg-secondary-fixed/60 text-primary font-medium';
       } else {
-        bgClass = 'bg-surface-container-highest text-on-surface-variant';
+        bgClass = 'bg-surface-container-high text-outline';
       }
     }
 
@@ -181,9 +189,9 @@ export const OverviewView: React.FC = () => {
             >
               <span className="material-symbols-outlined text-[16px]">chevron_right</span>
             </button>
-            {selectedDate !== '2024-10-24' && (
+            {selectedDate !== realToday && (
               <button
-                onClick={() => setSelectedDate('2024-10-24')}
+                onClick={() => setSelectedDate(realToday)}
                 className="text-[11px] text-secondary underline hover:opacity-80 ml-1 font-semibold cursor-pointer"
                 type="button"
               >

@@ -1,6 +1,6 @@
 import { Habit, CompletionMap, DailyReflection } from '../types/habit';
 
-export const TODAY_KEY = '2024-10-24'; // Matches Stitch designs "Thursday, Oct 24"
+export const TODAY_KEY = formatDateKey(new Date());
 
 export function formatDateKey(date: Date): string {
   const y = date.getFullYear();
@@ -242,86 +242,12 @@ export const INITIAL_HABITS: Habit[] = [
   },
 ];
 
-// Seed completion history for October 2024
+// Initialize empty completion records per habit (zero demo streak)
 export function generateInitialCompletions(): CompletionMap {
   const completions: CompletionMap = {};
-  const habitIds = INITIAL_HABITS.map((h) => h.id);
-
-  habitIds.forEach((id) => {
-    completions[id] = {};
+  INITIAL_HABITS.forEach((h) => {
+    completions[h.id] = {};
   });
-
-  const dayCounts: Record<number, number> = {
-    1: 5,
-    2: 7,
-    3: 8,
-    4: 8,
-    5: 6,
-    6: 4,
-    7: 0,
-    8: 8,
-    9: 8,
-    10: 7,
-    11: 8,
-    12: 8,
-    13: 6,
-    14: 5,
-    15: 8,
-    16: 8,
-    17: 8,
-    18: 7,
-    19: 8,
-    20: 6,
-    21: 0,
-    22: 8,
-    23: 8,
-    24: 6, // Oct 24: 6 completed out of 8
-    25: 6,
-    26: 7,
-    27: 0,
-    28: 5,
-    29: 8,
-    30: 8,
-    31: 7,
-  };
-
-  for (let day = 1; day <= 31; day++) {
-    const dayStr = `2024-10-${String(day).padStart(2, '0')}`;
-    const count = dayCounts[day] ?? 0;
-
-    if (day === 24) {
-      completions['habit-1'][dayStr] = true;
-      completions['habit-2'][dayStr] = true;
-      completions['habit-3'][dayStr] = true;
-      completions['habit-4'][dayStr] = true;
-      completions['habit-7'][dayStr] = true;
-      completions['habit-8'][dayStr] = true;
-      completions['habit-5'][dayStr] = false;
-      completions['habit-6'][dayStr] = false;
-    } else {
-      for (let i = 0; i < habitIds.length; i++) {
-        const hId = habitIds[i];
-        completions[hId][dayStr] = i < count;
-      }
-    }
-  }
-
-  // Also seed realistic past 60 days (August & September) so 90D and Year views have rich authentic data
-  for (let m = 8; m <= 9; m++) {
-    const daysInMonth = m === 8 ? 31 : 30;
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `2024-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      // High adherence with intermittent rest days on Sundays
-      const dateObj = parseDateKey(dateStr);
-      const isSunday = dateObj.getDay() === 0;
-      const count = isSunday ? 3 : (d % 7 === 0 ? 5 : 7);
-
-      for (let i = 0; i < habitIds.length; i++) {
-        completions[habitIds[i]][dateStr] = i < count;
-      }
-    }
-  }
-
   return completions;
 }
 
@@ -462,38 +388,55 @@ export function calculateOverallStreaks(
 
   const targetDate = parseDateKey(todayStr);
 
-  const getDaySuccess = (d: Date) => {
+  const getDaySuccess = (d: Date): boolean => {
     const dayOfWeek = getDayOfWeekIndex(d);
     const key = formatDateKey(d);
 
     const scheduled = habits.filter(
       (h) => h.cadence === 'Daily' || h.repeatDays.includes(dayOfWeek)
     );
-    if (scheduled.length === 0) return true; // rest day
+    if (scheduled.length === 0) return false;
 
-    const done = scheduled.filter((h) => completions[h.id]?.[key]).length;
+    const done = scheduled.filter((h) => Boolean(completions[h.id]?.[key])).length;
+    if (done === 0) return false;
     return done / scheduled.length >= 0.6; // At least 60% threshold
   };
 
   let current = 0;
-  // Check if today qualifies
   const todayQualifies = getDaySuccess(targetDate);
+
   if (todayQualifies) {
     current++;
-  }
-
-  // Walk backwards
-  for (let i = 1; i < 365; i++) {
-    const d = new Date(targetDate);
-    d.setDate(d.getDate() - i);
-    if (getDaySuccess(d)) {
+    // Walk backwards continuously from yesterday
+    for (let i = 1; i < 365; i++) {
+      const d = new Date(targetDate);
+      d.setDate(d.getDate() - i);
+      if (getDaySuccess(d)) {
+        current++;
+      } else {
+        break;
+      }
+    }
+  } else {
+    // If today is not yet accomplished, check if yesterday was successful
+    // so current streak isn't cleared early in the day
+    const yesterday = new Date(targetDate);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (getDaySuccess(yesterday)) {
       current++;
-    } else {
-      break;
+      for (let i = 2; i < 365; i++) {
+        const d = new Date(targetDate);
+        d.setDate(d.getDate() - i);
+        if (getDaySuccess(d)) {
+          current++;
+        } else {
+          break;
+        }
+      }
     }
   }
 
-  // Best streak over past 180 days
+  // Calculate best streak over past 180 days
   let best = 0;
   let temp = 0;
   for (let i = 180; i >= 0; i--) {

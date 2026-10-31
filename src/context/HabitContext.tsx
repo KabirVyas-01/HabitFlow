@@ -58,11 +58,19 @@ const HabitContext = createContext<HabitContextType | undefined>(undefined);
 
 const HABITS_STORAGE_KEY = 'habitflow_habits_v2';
 const HABITS_LEGACY_KEY = 'habitflow_habits';
-const COMPLETIONS_STORAGE_KEY = 'habitflow_completions_v2';
+const COMPLETIONS_STORAGE_KEY = 'habitflow_completions_v3';
 const REFLECTIONS_STORAGE_KEY = 'habitflow_reflections_v2';
 const USER_STORAGE_KEY = 'habitflow_user_v2';
 const USER_EMAIL_STORAGE_KEY = 'habitflow_user_email_v2';
 const USER_AVATAR_STORAGE_KEY = 'habitflow_user_avatar_v2';
+
+// Purge any legacy mock completions so streaks start at 0
+try {
+  localStorage.removeItem('habitflow_completions_v2');
+  localStorage.removeItem('habitflow_completions');
+} catch {
+  // ignore
+}
 
 export const DEFAULT_USER_EMAIL = 'elena@habitflow.app';
 

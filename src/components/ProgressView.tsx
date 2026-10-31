@@ -1,6 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useHabits } from '../context/HabitContext';
-import { calculateHabitStats, calculateTimeframeData, parseDateKey, formatDateKey } from '../utils/habitUtils';
+import {
+  calculateHabitStats,
+  calculateTimeframeData,
+  parseDateKey,
+  formatDateKey,
+  TODAY_KEY,
+} from '../utils/habitUtils';
 
 interface ProgressViewProps {
   onOpenReflection: () => void;
@@ -10,6 +16,11 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
   const { habits, completions, selectedDate, setSelectedDate } = useHabits();
   const [timeFilter, setTimeFilter] = useState<'7D' | '30D' | '90D' | 'Year'>('30D');
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<number | null>(null);
+
+  const targetDate = useMemo(() => parseDateKey(selectedDate), [selectedDate]);
+  const currentYear = targetDate.getFullYear();
+  const currentMonth = targetDate.getMonth();
+  const monthName = targetDate.toLocaleDateString('en-US', { month: 'long' });
 
   // Dynamically compute stats for the selected timeframe
   const timeframeStats = useMemo(() => {
@@ -30,18 +41,20 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
       .sort((a, b) => b.consistencyRate - a.consistencyRate);
   }, [habits, completions, selectedDate, timeFilter]);
 
-  // 30D: October 31-day heatmap matrix
-  const octoberMatrix = useMemo(() => {
-    return Array.from({ length: 31 }, (_, i) => {
+  // 30D: Current month matrix
+  const monthlyMatrix = useMemo(() => {
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+    return Array.from({ length: daysInMonth }, (_, i) => {
       const day = i + 1;
-      const dateStr = `2024-10-${String(day).padStart(2, '0')}`;
+      const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const dayObj = parseDateKey(dateStr);
       const dayIdx = (dayObj.getDay() + 6) % 7;
 
       const scheduledHabits = habits.filter(
         (h) => h.cadence === 'Daily' || h.repeatDays.includes(dayIdx)
       );
-      const doneCount = scheduledHabits.filter((h) => completions[h.id]?.[dateStr]).length;
+      const doneCount = scheduledHabits.filter((h) => Boolean(completions[h.id]?.[dateStr])).length;
       const totalScheduled = Math.max(scheduledHabits.length, 1);
       const pct = Math.round((doneCount / totalScheduled) * 100);
 
@@ -56,7 +69,7 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
         bg = 'bg-secondary-fixed/70 text-on-secondary-fixed';
       }
 
-      if (day === 31) {
+      if (dateStr === TODAY_KEY) {
         bg += ' ring-2 ring-primary ring-offset-1';
       }
 
@@ -69,7 +82,7 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
         bg,
       };
     });
-  }, [habits, completions]);
+  }, [habits, completions, currentYear, currentMonth]);
 
   // 7D: Last 7 days points
   const last7Days = useMemo(() => {
@@ -84,7 +97,6 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
       isSelected: boolean;
     }[] = [];
 
-    const targetDate = parseDateKey(selectedDate);
     for (let i = 6; i >= 0; i--) {
       const d = new Date(targetDate);
       d.setDate(d.getDate() - i);
@@ -94,7 +106,7 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
       const scheduled = habits.filter(
         (h) => h.cadence === 'Daily' || h.repeatDays.includes(dayIdx)
       );
-      const done = scheduled.filter((h) => completions[h.id]?.[key]).length;
+      const done = scheduled.filter((h) => Boolean(completions[h.id]?.[key])).length;
       const total = Math.max(scheduled.length, 1);
       const pct = Math.round((done / total) * 100);
 
@@ -105,57 +117,131 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
         doneCount: done,
         totalCount: total,
         pct,
-        isToday: key === '2024-10-24',
+        isToday: key === TODAY_KEY,
         isSelected: key === selectedDate,
       });
     }
     return points;
-  }, [habits, completions, selectedDate]);
+  }, [habits, completions, targetDate, selectedDate]);
 
-  // 90D: 3-month aggregated comparison
+  // 90D: 3-month aggregated comparison derived from real completions
   const quarterlyMonths = useMemo(() => {
-    return [
-      { name: 'August', activeDays: 28, totalDone: 146, totalPossible: 170, pct: 86 },
-      { name: 'September', activeDays: 27, totalDone: 142, totalPossible: 162, pct: 88 },
-      { name: 'October', activeDays: 27, totalDone: 142, totalPossible: 160, pct: 89 },
-    ];
-  }, []);
+    const months = [];
+    for (let m = 2; m >= 0; m--) {
+      const d = new Date(targetDate.getFullYear(), targetDate.getMonth() - m, 1);
+      const mName = d.toLocaleDateString('en-US', { month: 'long' });
+      const y = d.getFullYear();
+      const mIdx = d.getMonth();
+      const daysInM = new Date(y, mIdx + 1, 0).getDate();
 
-  // 90D: 12-week consistency momentum ribbon
+      let totalDone = 0;
+      let totalPossible = 0;
+      let activeDays = 0;
+
+      for (let day = 1; day <= daysInM; day++) {
+        const dateKey = `${y}-${String(mIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const dayObj = parseDateKey(dateKey);
+        const dayOfWeek = (dayObj.getDay() + 6) % 7;
+        const scheduled = habits.filter(
+          (h) => h.cadence === 'Daily' || h.repeatDays.includes(dayOfWeek)
+        );
+        const done = scheduled.filter((h) => Boolean(completions[h.id]?.[dateKey])).length;
+        if (done > 0) activeDays++;
+        totalDone += done;
+        totalPossible += scheduled.length;
+      }
+
+      const pct = totalPossible > 0 ? Math.round((totalDone / totalPossible) * 100) : 0;
+      months.push({
+        name: mName,
+        activeDays,
+        totalDone,
+        totalPossible,
+        pct,
+      });
+    }
+    return months;
+  }, [habits, completions, targetDate]);
+
+  // 90D: 12-week consistency momentum ribbon calculated from real habit adherence
   const twelveWeeks = useMemo(() => {
-    return [
-      { week: 'W1', pct: 75, bg: 'bg-secondary-fixed' },
-      { week: 'W2', pct: 80, bg: 'bg-secondary' },
-      { week: 'W3', pct: 85, bg: 'bg-primary-container' },
-      { week: 'W4', pct: 82, bg: 'bg-secondary' },
-      { week: 'W5', pct: 88, bg: 'bg-primary-container' },
-      { week: 'W6', pct: 86, bg: 'bg-primary-container' },
-      { week: 'W7', pct: 90, bg: 'bg-primary' },
-      { week: 'W8', pct: 84, bg: 'bg-secondary' },
-      { week: 'W9', pct: 89, bg: 'bg-primary-container' },
-      { week: 'W10', pct: 92, bg: 'bg-primary' },
-      { week: 'W11', pct: 94, bg: 'bg-primary' },
-      { week: 'W12', pct: 96, bg: 'bg-primary' },
-    ];
-  }, []);
+    const weeks = [];
+    for (let w = 11; w >= 0; w--) {
+      let weekDone = 0;
+      let weekPossible = 0;
+      for (let day = 0; day < 7; day++) {
+        const d = new Date(targetDate);
+        d.setDate(d.getDate() - (w * 7 + (6 - day)));
+        const key = formatDateKey(d);
+        const dayOfWeek = (d.getDay() + 6) % 7;
+        const scheduled = habits.filter(
+          (h) => h.cadence === 'Daily' || h.repeatDays.includes(dayOfWeek)
+        );
+        const done = scheduled.filter((h) => Boolean(completions[h.id]?.[key])).length;
+        weekDone += done;
+        weekPossible += scheduled.length;
+      }
+      const pct = weekPossible > 0 ? Math.round((weekDone / weekPossible) * 100) : 0;
+      let bg = 'bg-surface-container-high';
+      if (pct >= 90) bg = 'bg-primary';
+      else if (pct >= 80) bg = 'bg-primary-container';
+      else if (pct >= 60) bg = 'bg-secondary';
+      else if (pct > 0) bg = 'bg-secondary-fixed';
+      weeks.push({
+        week: `W${12 - w}`,
+        pct,
+        bg,
+      });
+    }
+    return weeks;
+  }, [habits, completions, targetDate]);
 
-  // Year: 12-month overview
+  // Year: 12-month overview calculated dynamically
   const annualMonths = useMemo(() => {
-    return [
-      { label: 'Jan', rate: 76, active: true },
-      { label: 'Feb', rate: 80, active: true },
-      { label: 'Mar', rate: 78, active: true },
-      { label: 'Apr', rate: 82, active: true },
-      { label: 'May', rate: 85, active: true },
-      { label: 'Jun', rate: 84, active: true },
-      { label: 'Jul', rate: 86, active: true },
-      { label: 'Aug', rate: 86, active: true },
-      { label: 'Sep', rate: 88, active: true },
-      { label: 'Oct', rate: 89, active: true, isCurrent: true },
-      { label: 'Nov', rate: 0, active: false },
-      { label: 'Dec', rate: 0, active: false },
-    ];
-  }, []);
+    const months = [];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    for (let m = 0; m < 12; m++) {
+      const daysInM = new Date(currentYear, m + 1, 0).getDate();
+      let mDone = 0;
+      let mPossible = 0;
+      for (let day = 1; day <= daysInM; day++) {
+        const dateKey = `${currentYear}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const dayObj = parseDateKey(dateKey);
+        const dayOfWeek = (dayObj.getDay() + 6) % 7;
+        const scheduled = habits.filter(
+          (h) => h.cadence === 'Daily' || h.repeatDays.includes(dayOfWeek)
+        );
+        const done = scheduled.filter((h) => Boolean(completions[h.id]?.[dateKey])).length;
+        mDone += done;
+        mPossible += scheduled.length;
+      }
+      const rate = mPossible > 0 ? Math.round((mDone / mPossible) * 100) : 0;
+      const isCurrent = m === targetDate.getMonth();
+      const isPastOrCurrent = m <= targetDate.getMonth();
+      months.push({
+        label: monthNames[m],
+        rate,
+        active: isPastOrCurrent && rate > 0,
+        isCurrent,
+      });
+    }
+    return months;
+  }, [habits, completions, currentYear, targetDate]);
+
+  // Seasonal quarters from real data
+  const quarterStats = useMemo(() => {
+    const calcQ = (startIdx: number) => {
+      const qMonths = annualMonths.slice(startIdx, startIdx + 3);
+      const avg = Math.round(qMonths.reduce((acc, m) => acc + m.rate, 0) / 3);
+      return avg;
+    };
+    return {
+      q1: calcQ(0),
+      q2: calcQ(3),
+      q3: calcQ(6),
+      q4: calcQ(9),
+    };
+  }, [annualMonths]);
 
   return (
     <div className="flex flex-col w-full max-w-xl mx-auto px-margin pb-28 space-y-space-lg">
@@ -360,13 +446,13 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
         </div>
       )}
 
-      {/* 2. 30D VIEW: Monthly Calendar Execution Heatmap (October Matrix) */}
+      {/* 2. 30D VIEW: Monthly Calendar Execution Heatmap (Monthly Matrix) */}
       {timeFilter === '30D' && (
         <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm transition-all">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-space-xs">
               <span className="font-headline-sm text-headline-sm text-primary">Monthly Execution</span>
-              <span className="font-label-sm text-label-sm text-on-surface-variant">· October</span>
+              <span className="font-label-sm text-label-sm text-on-surface-variant">· {monthName}</span>
             </div>
             <span className="font-label-md text-label-md text-secondary font-semibold">
               {timeframeStats.activeDays} Active Days
@@ -378,9 +464,9 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
             <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
           </div>
 
-          {/* 31 Days Matrix */}
+          {/* Monthly Days Matrix */}
           <div className="grid grid-cols-7 gap-1.5" id="heatmapGrid">
-            {octoberMatrix.map((item) => {
+            {monthlyMatrix.map((item) => {
               const isSelected = selectedCalendarDay === item.day;
               return (
                 <button
@@ -393,24 +479,19 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
                     item.bg
                   } ${isSelected ? 'ring-2 ring-secondary ring-offset-1 font-bold' : ''}`}
                   type="button"
-                  title={`October ${item.day}: ${item.count} rituals`}
+                  title={`${monthName} ${item.day}: ${item.count} rituals`}
                 >
                   {item.day}
                 </button>
               );
             })}
-            {/* Empty spacer cells */}
-            <div className="aspect-square rounded-md bg-surface-container-high/30"></div>
-            <div className="aspect-square rounded-md bg-surface-container-high/30"></div>
-            <div className="aspect-square rounded-md bg-surface-container-high/30"></div>
-            <div className="aspect-square rounded-md bg-surface-container-high/30"></div>
           </div>
 
           {/* Heatmap Legend */}
           <div className="flex items-center justify-between pt-space-xs text-on-surface-variant font-label-sm text-[11px]">
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-primary"></span>
-              Today: 31st
+              Today: {parseDateKey(TODAY_KEY).getDate()}
             </span>
             <div className="flex items-center gap-1.5">
               <span className="text-outline">Less</span>
@@ -513,14 +594,14 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
             <div>
               <div className="flex items-center gap-space-xs">
                 <span className="font-headline-sm text-headline-sm text-primary">Annual Consistency</span>
-                <span className="font-label-sm text-label-sm text-on-surface-variant">· 2024</span>
+                <span className="font-label-sm text-label-sm text-on-surface-variant">· {currentYear}</span>
               </div>
               <p className="font-body-sm text-xs text-on-surface-variant mt-0.5">
                 Full-year habit volume &amp; seasonal discipline
               </p>
             </div>
             <span className="font-label-md text-label-md text-secondary font-semibold">
-              312 Active Days
+              {timeframeStats.activeDays} Active Days
             </span>
           </div>
 
@@ -536,8 +617,8 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
                       ? 'bg-primary-container'
                       : 'bg-surface-container-high'
                   }`}
-                  style={{ height: m.active ? `${m.rate}%` : '6%' }}
-                  title={`${m.label}: ${m.active ? `${m.rate}% consistency` : 'Upcoming'}`}
+                  style={{ height: m.active ? `${Math.max(m.rate, 6)}%` : '6%' }}
+                  title={`${m.label}: ${m.rate}% consistency`}
                 ></div>
                 <span
                   className={`text-[10px] font-medium ${
@@ -554,19 +635,19 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
           <div className="pt-2 border-t border-surface-container-low grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
             <div className="bg-surface-container-low rounded-lg p-2">
               <span className="text-[10px] text-outline uppercase block font-semibold">Q1 Winter</span>
-              <span className="font-headline-sm text-sm text-primary font-bold">78%</span>
+              <span className="font-headline-sm text-sm text-primary font-bold">{quarterStats.q1}%</span>
             </div>
             <div className="bg-surface-container-low rounded-lg p-2">
               <span className="text-[10px] text-outline uppercase block font-semibold">Q2 Spring</span>
-              <span className="font-headline-sm text-sm text-primary font-bold">84%</span>
+              <span className="font-headline-sm text-sm text-primary font-bold">{quarterStats.q2}%</span>
             </div>
             <div className="bg-surface-container-low rounded-lg p-2">
               <span className="text-[10px] text-outline uppercase block font-semibold">Q3 Summer</span>
-              <span className="font-headline-sm text-sm text-primary font-bold">87%</span>
+              <span className="font-headline-sm text-sm text-primary font-bold">{quarterStats.q3}%</span>
             </div>
             <div className="bg-surface-container-low rounded-lg p-2 ring-1 ring-secondary/40">
               <span className="text-[10px] text-secondary uppercase block font-semibold">Q4 Autumn</span>
-              <span className="font-headline-sm text-sm text-primary font-bold">89%</span>
+              <span className="font-headline-sm text-sm text-primary font-bold">{quarterStats.q4}%</span>
             </div>
           </div>
         </div>
@@ -611,7 +692,7 @@ export const ProgressView: React.FC<ProgressViewProps> = ({ onOpenReflection }) 
                             hasFire ? 'text-secondary' : 'text-on-surface-variant'
                           }`}
                         >
-                          {streak} {streak === 1 ? 'day streak' : 'day streak'}
+                          {streak > 0 ? `${streak}d streak` : '0d streak'}
                           {hasFire && (
                             <span
                               className="material-symbols-outlined text-[13px] text-[#e06d28]"

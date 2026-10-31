@@ -141,9 +141,15 @@ export const HabitsListView: React.FC = () => {
                       {habit.target && <span>•</span>}
                       {habit.target && <span>{habit.target}</span>}
                       <span>•</span>
-                      <span className="text-secondary font-medium flex items-center gap-0.5">
-                        {stats.streak}d streak
-                      </span>
+                      {stats.streak > 0 ? (
+                        <span className="text-secondary font-medium flex items-center gap-0.5">
+                          {stats.streak}d streak
+                        </span>
+                      ) : (
+                        <span className="text-outline font-normal">
+                          0d streak
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

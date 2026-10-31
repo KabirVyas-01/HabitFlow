@@ -513,14 +513,14 @@ export const SettingsView: React.FC = () => {
               type="button"
             >
               <span className="material-symbols-outlined text-[18px]">restart_alt</span>
-              Reset Demo
+              Reset Progress
             </button>
           ) : (
             <button
               onClick={() => {
                 resetDemoData();
                 setShowResetConfirm(false);
-                showToast('Demo data restored');
+                showToast('All habit streaks reset to zero');
               }}
               className="py-2.5 px-3 rounded-xl bg-error text-on-error font-label-md text-label-md flex items-center justify-center gap-1.5 transition-all cursor-pointer"
               type="button"
